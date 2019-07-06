@@ -19,7 +19,8 @@
  *   2007-04-20   0.04    add device-listing mode   
  *   2008-03-24   0.05    add include for sting.h
  *   2016-09-10   0.06    add LED and HEATER control
- * 
+ *   2019-07-06   0.07    HEATER control change not to forget heater off
+ *                        When HEATER and measuerment light LED
  */
 #include <stdio.h>
 #include <usb.h>
@@ -83,6 +84,90 @@ int i;
 
 }
 
+int red_led_on(usb_dev_handle *dh)
+{
+	int rc;
+	char buff[512];
+	// Red LED ON
+	memset( buff, 0, sizeof(buff));
+	buff[0] = 3;
+	buff[1] = 0x1;
+	rc = usb_control_msg(dh,
+		USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+		USB_REQ_SET_CONFIGURATION, 0x0300, 0, buff, 7, 5000);
+	return rc;
+}
+
+int green_led_on(usb_dev_handle *dh)
+{
+	int rc;
+	char buff[512];
+	// Green LED ON
+	memset( buff, 0, sizeof(buff));
+	buff[0] = 4;
+	buff[1] = 0x1;
+	rc = usb_control_msg(dh,
+		USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+		USB_REQ_SET_CONFIGURATION, 0x0300, 0, buff, 7, 5000);
+	return rc;
+}
+
+int red_led_off(usb_dev_handle *dh)
+{
+	int rc;
+	char buff[512];
+	// Red LED OFF
+	memset( buff, 0, sizeof(buff));
+	buff[0] = 3;
+	buff[1] = 0x0;
+	rc = usb_control_msg(dh,
+		USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+		USB_REQ_SET_CONFIGURATION, 0x0300, 0, buff, 7, 5000);
+	return rc;
+}
+
+int green_led_off(usb_dev_handle *dh)
+{
+	int rc;
+	char buff[512];
+	// Green LED OFF
+	memset( buff, 0, sizeof(buff));
+	buff[0] = 4;
+	buff[1] = 0x0;
+	rc = usb_control_msg(dh,
+		USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+		USB_REQ_SET_CONFIGURATION, 0x0300, 0, buff, 7, 5000);
+	return rc;
+}
+
+int heater_on(usb_dev_handle *dh)
+{
+	int rc;
+	char buff[512];
+	// ON Heater
+	memset( buff, 0, sizeof(buff));
+	buff[0] = 1;
+	buff[1] = 1 << 2;
+	rc = usb_control_msg(dh,
+		USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+		USB_REQ_SET_CONFIGURATION, 0x0300, 0, buff, 7, 5000);
+	return rc;
+}
+
+int heater_off(usb_dev_handle *dh)
+{
+	int rc;
+	char buff[512];
+	// ON Heater
+	memset( buff, 0, sizeof(buff));
+	buff[0] = 1;
+	buff[1] = 0 << 2;
+	rc = usb_control_msg(dh,
+		USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+		USB_REQ_SET_CONFIGURATION, 0x0300, 0, buff, 7, 5000);
+	return rc;
+}
+
 struct usb_device *searchdevice(unsigned int vendor, unsigned int product, int num)
 {
 struct usb_bus *bus;
@@ -131,43 +216,55 @@ int count;
     return((struct usb_device *)NULL);
 }
 
+// v     ○☓☓☓☓☓☓☓☓☓
+// t     ☓○☓☓☓☓☓☓☓☓
+// h     ☓☓○☓☓☓☓☓☓☓
+// m     ☓☓☓○☓☓☓☓☓☓
+// 1line ☓☓☓☓○☓☓☓☓☓
+// d     ☓☓☓☓☓○☓☓☓☓ secret
+// list  ☓☓☓☓☓☓○☓☓☓
+// L     ☓☓☓☓☓☓☓○☓☓
+// H     ☓☓☓☓☓☓☓☓○☓
+// f     △△△△△△－△△△
+// s     △△△△△△☓☓△△
 void usage()
 {
-    puts("USBRH on Linux 0.06 by Briareos\nusage: usbrh [-vthm1fl]\n"
+    puts("USBRH on Linux 0.07 by Briareos\nusage: usbrh [-vthm1fls]\n"
          "       -v : verbose\n"
          "       -t : temperature (for MRTG2)\n"
          "       -h : humidity (for MRTG2)\n"
          "       -m : temperature/humidity output(for MRTG2)\n"
          "       -1 : 1-line output\n"
          "       -fn: set device number(n>0)\n"
+         "       -s : silent mode. Don't light LED on measurement.\n"
          "       -l : Device list\n"
-         "       -Ln : LED Control(red/green : n=0(off/off),1(on/off),2(off/on),3(on/on))\n"
-         "       -Hn : Heater Control(0:off, 1:on)\n");
+         "       -L : LED Test\n"
+         "       -Hn : Heater Control(n:0-60second)\n");
 }
 
 int main(int argc, char *argv[])
 {
-struct usb_device *dev;
-usb_dev_handle *dh;
-char buff[512];
-int rc;
-unsigned int iTemperature, iHumidity, opt;
-double temperature, humidity;
-unsigned char data[8];
-char flag_v, flag_t, flag_h, flag_d, flag_1line, flag_mrtg, flag_l, flag_LED, flag_Heater;
-char tmpDevice[1];
-int  DeviceNum;
-char tmpLED[1], tmpHeater[1];
-int LEDNum, HeaterNum;
-unsigned char is_on;
+    struct usb_device *dev;
+    usb_dev_handle *dh;
+    char buff[512];
+    int rc;
+    unsigned int iTemperature, iHumidity, opt;
+    double temperature, humidity;
+    unsigned char data[8];
+    char flag_v, flag_t, flag_h, flag_d, flag_1line, flag_mrtg
+        , flag_l, flag_s, flag_LED, flag_Heater;
+    char tmpDevice[1];
+    int  DeviceNum;
+    char tmpLED[1], tmpHeater[2];
+    int HeaterNum;
 
     dev = NULL;
     dh = NULL;
     rc = 0;
     DeviceNum = 1;
-    flag_v = flag_t = flag_h = flag_d = flag_1line = flag_mrtg = flag_l = flag_LED = flag_Heater = 0;
+    flag_v = flag_t = flag_h = flag_d = flag_1line 
+            = flag_mrtg = flag_l = flag_s = flag_LED = flag_Heater = 0;
     temperature = humidity = 0;
-    LEDNum = -1;
     HeaterNum = -1;
     memset(buff, 0, sizeof(buff));
     memset(data, 0, sizeof(data));
@@ -175,22 +272,19 @@ unsigned char is_on;
     memset(tmpLED, 0, sizeof(tmpLED));
     memset(tmpHeater, 0, sizeof(tmpHeater));
 
-    while((opt = getopt(argc, argv,"lvth1dmf:L:H:?")) != -1){
+    while((opt = getopt(argc, argv,"lvth1sdmLf:H:?")) != -1){
         switch(opt){
             case 'v':
                 flag_v = 1;
                 break;
             case 't':
-                if(!flag_h)
-                    flag_t = 1;
+                flag_t = 1;
                 break;
             case 'h':
-                if(!flag_t)
-                    flag_h = 1;
+                flag_h = 1;
                 break;
             case 'm':
-                if(!flag_mrtg)
-                    flag_mrtg = 1;
+                flag_mrtg = 1;
                 break;
             case '1':
                 flag_1line = 1;
@@ -205,10 +299,11 @@ unsigned char is_on;
             case 'l':
                 flag_l = 1;
                 break;
+            case 's':
+                flag_s = 1;
+		break;
             case 'L':
                 flag_LED = 1;
-                strncpy(tmpLED, optarg, sizeof(tmpLED));
-                LEDNum = atoi(tmpLED);
                 break;
             case 'H':
                 flag_Heater = 1;
@@ -222,16 +317,29 @@ unsigned char is_on;
         }
     }
     
-    if ( flag_LED && !(LEDNum == 0 || LEDNum == 1 || LEDNum == 2 || LEDNum == 3 )) {
+    // arg check
+    if (  flag_v + flag_t + flag_h + flag_mrtg + flag_d 
+            + flag_1line + flag_l + flag_Heater + flag_LED > 1 ) {
         usage();
-        exit(0);
+        exit(1);
     }
     
-    if( flag_Heater && !(HeaterNum == 0 || HeaterNum == 1)) {
+    if ( flag_l && flag_s ) {
         usage();
-        exit(0);
+        exit(1);
     }
-
+    
+    if( flag_LED &&  flag_s ) {
+        usage();
+        exit(1);
+    }
+   
+    if( flag_Heater && !(HeaterNum >= 0 || HeaterNum <= 60 ) ) {
+        usage();
+        exit(1);
+    }
+   
+    // start control
     usb_init();
     usb_find_busses();
     usb_find_devices();
@@ -244,7 +352,8 @@ unsigned char is_on;
     if(flag_d)
         usb_set_debug(5);
 
-    if((dev = searchdevice(USBRH_VENDOR, USBRH_PRODUCT, DeviceNum)) == (struct usb_device *)NULL){
+    if((dev = searchdevice(USBRH_VENDOR, USBRH_PRODUCT, DeviceNum)) 
+            == (struct usb_device *)NULL){
         puts("USBRH not found");
         exit(1);
     } 
@@ -252,6 +361,7 @@ unsigned char is_on;
     if(flag_d){
         puts("USBRH is found");
     }
+    
     dh = usb_open(dev);
     if(dh == NULL){
         puts("usb_open error");
@@ -259,21 +369,25 @@ unsigned char is_on;
     }
 
     if( ( rc = usb_set_configuration(dh, dev->config->bConfigurationValue) ) < 0){
-	if( ( rc = usb_detach_kernel_driver_np(dh, dev->config->interface->altsetting->bInterfaceNumber) ) < 0 ){
+	if( ( rc = usb_detach_kernel_driver_np(dh
+                , dev->config->interface->altsetting->bInterfaceNumber) ) < 0 ){
         puts("usb_set_configuration error");
         usb_close(dh);
         exit(3);
     }
     }
 
-    if( ( rc = usb_claim_interface(dh, dev->config->interface->altsetting->bInterfaceNumber))<0){
+    if( ( rc = usb_claim_interface(dh
+            , dev->config->interface->altsetting->bInterfaceNumber))<0){
         //puts("usb_claim_interface error");
-        if((rc = usb_detach_kernel_driver_np(dh, dev->config->interface->altsetting->bInterfaceNumber))<0){
+        if((rc = usb_detach_kernel_driver_np(dh
+                , dev->config->interface->altsetting->bInterfaceNumber))<0){
             puts("usb_detach_kernel_driver_np error");
             usb_close(dh);
             exit(4);
         }else{
-            if((rc =usb_claim_interface(dh, dev->config->interface->altsetting->bInterfaceNumber))<0){
+            if((rc =usb_claim_interface(dh
+                    , dev->config->interface->altsetting->bInterfaceNumber))<0){
                 puts("usb_claim_interface error");
                 usb_close(dh);
                 exit(4);
@@ -281,33 +395,64 @@ unsigned char is_on;
         }
     }
 
-    // LED control usbrh_control_led(dev, 1, (dev->led >> 1) & 0x1);
+    // LED control
     if(flag_LED){
-        for( is_on = 0; is_on <= 1; is_on ++ ){ // 0: red 1:green
-            memset( buff, 0, sizeof(buff));
-            buff[0] = 3 + is_on;
-            buff[1] = (LEDNum >> is_on ) & 0x1;
-            rc = usb_control_msg(dh, USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
-                                USB_REQ_SET_CONFIGURATION,
-                                0x0300, 0, buff, 7, 5000);
-        } 
+        green_led_off(dh);
+	red_led_on(dh);
+        sleep(1);
+        red_led_off(dh);
+        usleep(500 * 1000);
+        red_led_on(dh);
+        sleep(1);
+        red_led_off(dh);
+        sleep(1);
+        green_led_on(dh);
+        sleep(1);
+        green_led_off(dh);
+        usleep(500*1000);
+        green_led_on(dh);
+        sleep(1);
+        green_led_off(dh);
+        sleep(1);
+        red_led_on(dh);
+        green_led_on(dh);
+        sleep(1);
+        red_led_off(dh);
+        green_led_off(dh);
+        usleep(500*1000);
+        red_led_on(dh);
+        green_led_on(dh);
+        sleep(1);
+        red_led_off(dh);
+        green_led_off(dh);
     }
-    // Heater control
-    if(flag_Heater){
-        memset( buff, 0, sizeof(buff));
-        buff[0] = 1;
-        buff[1] = HeaterNum << 2;
-        rc = usb_control_msg(dh, USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
-                            USB_REQ_SET_CONFIGURATION,
-                            0x0300, 0, buff, 7, 5000);
+    else if( flag_Heater ) { // Heater control
+	if ( HeaterNum ) {
+		// Red LED ON
+		if ( !flag_s ) red_led_on(dh);
+
+		// ON Heater
+		heater_on(dh);
+
+		// Sleep
+		sleep(HeaterNum);
+
+		// Red LED OFF
+		if ( !flag_s ) red_led_off(dh);
+	}
+
+	// OFF Heater
+	heater_off(dh);
     }
-    
-    // Detect temperature and humidity
-    if( !(flag_LED || flag_Heater)) {
+    else { // Detect temperature and humidity
+	// Green LED ON
+	if ( !flag_s ) green_led_on(dh);
+
         // SET_REPORT
         // http://www.ghz.cc/~clepple/libHID/doc/html/libusb_8c-source.html
-        rc = usb_control_msg(dh, USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
-                              0x09, 0x02<<8, 0, buff, 7, 5000);
+        rc = usb_control_msg(dh
+                , USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
+                0x09, 0x02<<8, 0, buff, 7, 5000);
 
         if(flag_d){
             if(rc<0){
@@ -336,12 +481,17 @@ unsigned char is_on;
             iTemperature = buff[2]<<8|(buff[3]&0xff);
             iHumidity = buff[0]<<8|(buff[1]&0xff);
             if(flag_d){
-                printf("convert to integer(temperature):[%02x %02x] -> [%04x]\n", (unsigned int)buff[2], (unsigned int)buff[3], iTemperature);
-                printf("convert to integer(humidity):[%02x %02x] -> [%04x]\n", (unsigned int)buff[0], (unsigned int)buff[1], iHumidity);
+                printf("convert to integer(temperature):[%02x %02x] -> [%04x]\n"
+                        , (unsigned int)buff[2], (unsigned int)buff[3], iTemperature);
+                printf("convert to integer(humidity):[%02x %02x] -> [%04x]\n"
+                        , (unsigned int)buff[0], (unsigned int)buff[1], iHumidity);
             }
             temperature = convert_temp(iTemperature);
             humidity    = convert_humidity(iHumidity);
         }
+
+	// Green LED OFF
+	if ( !flag_s ) green_led_off(dh);
 
         // Display Result
         if(flag_v){
@@ -363,7 +513,8 @@ unsigned char is_on;
             printf("%.2f %.2f\n", temperature, humidity);
     }
 
-    if((rc = usb_release_interface(dh, dev->config->interface->altsetting->bInterfaceNumber))<0){
+    if((rc = usb_release_interface(dh
+            , dev->config->interface->altsetting->bInterfaceNumber))<0){
         puts("usb_release_interface error");
         usb_close(dh);
         exit(5);
@@ -373,3 +524,4 @@ unsigned char is_on;
 
     return(0);
 }
+// end of file
