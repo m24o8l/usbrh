@@ -21,6 +21,7 @@
  *   2016-09-10   0.06    add LED and HEATER control
  *   2019-07-06   0.07    HEATER control change not to forget heater off
  *                        When HEATER and measuerment light LED
+ *   2019-07-07   0.08    Humidity calc bug fix
  */
 #include <stdio.h>
 #include <usb.h>
@@ -34,36 +35,28 @@
 // http://www.sensirion.com/en/pdf/product_information/Data_Sheet_humidity_sensor_SHT1x_SHT7x_E.pdf
 // http://www.syscom-inc.co.jp/pdf/sht_datasheet_j.pdf
 #define d1 -40.00
-#define d2 0.01
+#define d2C 0.01
+#define d2F 0.018
 #define c1 -4
 #define c2 0.0405
 #define c3 -0.0000028
 #define t1 0.01
 #define t2 0.00008
 
-// Temperature = d1+d2*SOt
-// d1  -40.00
-// d2  0.04
-double convert_temp(int in)
+// 
+struct measure_value{
+    double tempC;   // Tempereture celsius
+    double tempF;   // Temperature fahrenheit
+    double hum;     // Humidity
+};
+
+void convert_value( int so_t, int so_rh, struct measure_value *mv )
 {
-double tmp;
-
-    tmp = 0;
-
-    tmp = d1+d2*in;
-
-    return(tmp);
-}
-
-double convert_humidity(int in)
-{
-double tmp;
-
-    tmp = 0;
-
-    tmp = c1+c2*in+c3*(in*in);
-
-    return((t1-25)*(t1+t2*in)+tmp);
+    double rh_linear = c1 + c2 * so_rh + c3 * so_rh * so_rh; 
+    
+    mv->tempC = d1 + d2C * so_t;
+    mv->tempF = d1 + d2F * so_t;
+    mv->hum = ( mv->tempC - 25 ) * ( t1 + t2 * so_rh ) + rh_linear; 
 }
 
 void dump(unsigned char *in, int length)
@@ -249,7 +242,7 @@ int main(int argc, char *argv[])
     char buff[512];
     int rc;
     unsigned int iTemperature, iHumidity, opt;
-    double temperature, humidity;
+    struct measure_value mv;
     unsigned char data[8];
     char flag_v, flag_t, flag_h, flag_d, flag_1line, flag_mrtg
         , flag_l, flag_s, flag_LED, flag_Heater;
@@ -264,13 +257,13 @@ int main(int argc, char *argv[])
     DeviceNum = 1;
     flag_v = flag_t = flag_h = flag_d = flag_1line 
             = flag_mrtg = flag_l = flag_s = flag_LED = flag_Heater = 0;
-    temperature = humidity = 0;
     HeaterNum = -1;
     memset(buff, 0, sizeof(buff));
     memset(data, 0, sizeof(data));
     memset(tmpDevice, 0, sizeof(tmpDevice));
     memset(tmpLED, 0, sizeof(tmpLED));
     memset(tmpHeater, 0, sizeof(tmpHeater));
+    memset(&mv, 0, sizeof(mv));
 
     while((opt = getopt(argc, argv,"lvth1sdmLf:H:?")) != -1){
         switch(opt){
@@ -486,8 +479,7 @@ int main(int argc, char *argv[])
                 printf("convert to integer(humidity):[%02x %02x] -> [%04x]\n"
                         , (unsigned int)buff[0], (unsigned int)buff[1], iHumidity);
             }
-            temperature = convert_temp(iTemperature);
-            humidity    = convert_humidity(iHumidity);
+            convert_value( iTemperature, iHumidity, &mv );
         }
 
 	// Green LED OFF
@@ -495,22 +487,22 @@ int main(int argc, char *argv[])
 
         // Display Result
         if(flag_v){
-            printf("Temperature: %.2f C\n", temperature);
-            printf("Humidity: %.2f %%\n", humidity);
+            printf("Temperature: %.2f C\n", mv.tempC);
+            printf("Humidity: %.2f %%\n", mv.hum);
         }else
         if(flag_t){
-            printf("%.2f\n%.2f\n\nTemperature\n", temperature, temperature);
+            printf("%.2f\n%.2f\n\nTemperature\n", mv.tempC, mv.tempC);
         }else
         if(flag_h){
-            printf("%.2f\n%.2f\n\nHumidity\n", humidity, humidity);
+            printf("%.2f\n%.2f\n\nHumidity\n", mv.hum, mv.hum);
         }else
         if(flag_mrtg){
-            printf("%.2f\n%.2f\n\nTemperature/Humidity\n", temperature, humidity);
+            printf("%.2f\n%.2f\n\nTemperature/Humidity\n", mv.tempC, mv.hum);
         }else
         if(flag_1line){
-            printf("Temperature: %.2f C Humidity: %.2f %%\n", temperature, humidity);
+            printf("Temperature: %.2f C Humidity: %.2f %%\n", mv.tempC, mv.hum);
         }else
-            printf("%.2f %.2f\n", temperature, humidity);
+            printf("%.2f %.2f\n", mv.tempC, mv.hum);
     }
 
     if((rc = usb_release_interface(dh

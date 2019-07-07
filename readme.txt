@@ -1,5 +1,5 @@
-USBRH on Linux ver.0.07 Readme
-2019/07/05
+﻿USBRH on Linux ver.0.07 Readme
+2019/07/07
 
  1. これはなに？
     Strawberry Linux Co., Ltd.から販売されている USB接続型温湿度計 USBRH を、
@@ -48,7 +48,7 @@ USBRH on Linux ver.0.07 Readme
                           というときにどうぞ。
           -1: 1-line      verbose の表示を一行で出力します。リダイレクトしてwebcamや
                           camEなどのinfoファイルとして取り込む事を意図しています。
-          -s:             計測中、ヒーター中のLED点灯を抑止します。
+          -s: no LED      計測中、ヒーター中のLED点灯を抑止します。
           -fn: set device データを取り込むUSBRHを指定します。nは0以上、つまり1からはじまり
                           最大値は「システムに接続されたUSBRHの個数」までとなります。
                           指定がない場合、「最初に発見したUSBRH」から読み込みます。
@@ -60,9 +60,7 @@ USBRH on Linux ver.0.07 Readme
           -Hn: set heater ヒーターの制御を行います。
 　　　　　　　　　　　　　nには0から60を指定します。数字で指定した秒数ヒーターをオンにします。0の場合はヒーターのオン動作はせず、オフにする操作だけします。またヒーターがオンの状態の間、赤LEDを点灯させます。
                           このオプションを設定すると、温湿度の表示を行いません。
-          -Ln: set LED    LEDの制御を行います。
-                          nは0,1,2,3の何れかを指定します。0で赤OFF緑OFF、1で赤ON緑OFF、
-                          2で赤OFF緑ON、3で赤ON緑ONと点灯させます。
+          -L:  set LED    LED点灯のテストを行います。
                           このオプションを設定すると、温湿度の表示を行いません。
 
      実行例：
@@ -73,8 +71,8 @@ USBRH on Linux ver.0.07 Readme
          Temperature: 20.08 C
          Humidity: 41.01 %
 
-         $ ./usbrh -L1
-         $ ./usbrh -L0
+         $ ./usbrh -L
+         $ ./usbrh -H10
 
     もしも USBRH を発見できなかった場合、「USBRH not found」を表示して終了します。
 
@@ -119,6 +117,8 @@ USBRH on Linux ver.0.07 Readme
                     コンパイルした時に警告を吐くので対処
     0.06 2016-09-10 LEDとヒーターの制御機能を追加
                     いくつかのバグを修正
-    0.07 2016-07-05 ヒーター操作を秒数指定に変更
+    0.07 2019-07-05 ヒーター操作を秒数指定に変更
                     ヒータ中は赤LEDを点灯させる
                     計測中に緑LEDを点灯
+    0.08 2019-07-07 湿度計測のバグ修正 https://github.com/tadokoro/usbrh-hidapi　を拝見しました。
+　　　　　　　　　　　自分の環境ではエラーにならんのですが、そのうち見てみます。
